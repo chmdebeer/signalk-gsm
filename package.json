@@ -1,0 +1,18 @@
+{
+  "author": {
+    "name": "chmdebeer@gmail.com"
+  },
+  "description": "Signal K GSM/GPRS model interface",
+  "keywords": [
+    "signalk-node-server-plugin"
+  ],
+  "license": "ISC",
+  "main": "index.js",
+  "name": "signalk-gsm",
+  "version": "0.0.1",
+  "dependencies": {
+    "node-cron": "latest",
+    "serialport-gsm": "latest",
+    "axios": "latest"
+  }
+}
