@@ -36,22 +36,20 @@ module.exports = function (app) {
       open: false,
       init: false,
       ppp: false,
-      route: false
+      route: false,
+      serverUpdated: false
     }
   };
 
   var startPPP = function() {
     app.debug('Starting PPP');
-    gsmModem.close(() => {
-      boatData.gsm.open = false;
-      boatData.gsm.init = false;
-      exec('sudo pon gprs', (error, stdout, stderr) => {
-        if (error) {
-          app.error(`exec error: ${error}`);
-        } else {
-          boatData.gsm.ppp = true;
-        }
-      });
+    exec('sudo pon gprs', (error, stdout, stderr) => {
+      if (error) {
+        app.error(`exec error: ${error}`);
+      } else {
+        boatData.gsm.ppp = true;
+        boatData.gsm.serverUpdated = false;
+      }
     });
   }
 
@@ -86,6 +84,7 @@ module.exports = function (app) {
         app.error(`Error retrieving Signal Strength - ${err}`);
       } else {
         boatData.gsmSignal = result.data;
+        app.debug('Signal strength = ' + result.data.signalStrength);
       }
     });
   }
@@ -145,11 +144,12 @@ module.exports = function (app) {
     app.debug('Update server');
     if (boatData.gsm.ppp) {
       axios.post('https://chmdebeer.ca/reflections/signalk', {
-        json: app.signalk
+        json: app.signalk,
+        gsm: boatData.gsmSignal
       })
       .then(function (response) {
-        console.log(response);
         app.debug(`statusCode: ${response.statusCode}`)
+        boatData.gsm.serverUpdated = true;
       })
       .catch(function (error) {
         app.error(`Error sending data to server: ${error}`)
@@ -158,6 +158,7 @@ module.exports = function (app) {
   }
 
   gsmModem.on('open', () => {
+    app.debug('Modem Open');
     boatData.gsm.open = true;
 
     initModem();
@@ -178,9 +179,9 @@ module.exports = function (app) {
 
   plugin.start = function (options, restartPlugin) {
     // Here we put our plugin logic
-    app.debug('Plugin started');
+    app.debug('GSM Plugin Start on ' + options.port);
     let value = app.getSelfPath('uuid');
-    app.debug(value);
+    app.debug('uuid = ', value);
 
     let localSubscription = {
       context: 'vessels.self',
@@ -204,20 +205,23 @@ module.exports = function (app) {
 
     cron.schedule('0 * * * * *', () => {
       app.debug('minute');
-      if (boatData.gsm.ppp && !boatData.gsm.route) {
-        addRoute();
-      }
-      if (!boatData.gsm.ppp && !boatData.gsm.open) {
+      if (!boatData.gsm.open) {
         app.debug('Opening modem ' + options.port);
         gsmModem.open('/dev/' + options.port, modemOptions, () => {
         });
       }
-      if (!boatData.gsm.ppp && boatData.gsm.open && !boatData.gsm.init) {
+      if (boatData.gsm.open && !boatData.gsm.init) {
         initModem();
       }
-      if (!boatData.gsm.ppp && boatData.gsm.open && boatData.gsm.init) {
+      if (boatData.gsm.open && boatData.gsm.init) {
         getSignalStrength();
         readSMS();
+      }
+      if (boatData.gsm.ppp && !boatData.gsm.route) {
+        addRoute();
+      }
+      if (boatData.gsm.ppp && boatData.gsm.route && !boatData.gsm.serverUpdated) {
+        updateServer();
       }
     });
 
